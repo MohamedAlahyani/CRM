@@ -25,7 +25,9 @@ The CRM is an independent application. It is not embedded in Shopify Admin. Shop
 - A Shopify development app named `CRM Connector` exists outside this repository.
 - It is configured as non-embedded, has a published version, and is installed on a Shopify test store.
 - Shopify Client ID, Client Secret, and permanent `.myshopify.com` domain are expected through server-side environment configuration.
-- An Admin API authorization/token lifecycle has not yet been demonstrated; the listed values are not treated as proof of API access.
+- The current development app and development store belong to the same Shopify organization, so the MVP uses Shopify's client-credentials grant. The backend exchanges the client credentials for a server-side access token, caches it securely, and renews it around its 24-hour expiry.
+- The pinned Admin API is Shopify GraphQL `2026-07`; no OAuth callback is required for this current same-organization development store.
+- Source of truth: [Shopify client-credentials grant](https://shopify.dev/docs/apps/build/authentication-authorization/access-tokens/client-credentials-grant) and [GraphQL Admin API `2026-07`](https://shopify.dev/docs/api/admin-graphql/2026-07).
 - This repository was empty at the start of the documentation run: no web, API, worker, database, migration, integration, or infrastructure implementation exists.
 - No WhatsApp or Ozone credentials/contracts are present.
 
@@ -44,17 +46,14 @@ These items influence provider boundaries and organization scoping only. They ar
 
 ## 6. Users and roles
 
-The initial role templates are:
+The MVP has exactly two roles:
 
 | Role | Primary responsibilities |
 |---|---|
-| Administrator | Configure integrations, users, roles, and all operational data |
-| Operations manager | Oversee orders, shipments, failures, reports, and employee activity |
-| Order operator | Review and confirm orders, inspect customers, send approved messages |
-| Fulfilment operator | Create and monitor shipments, resolve delivery exceptions |
-| Read-only analyst | View operational screens, dashboards, and audit history without mutation |
+| Administrator | Configure environment-backed integrations, manage users, inspect all operational data, retry safe failures, and perform all MVP actions |
+| Operator | View orders/catalog/inventory and confirm orders; shipment creation, message resend, and other consequential actions are explicitly permission-checked within the fixed MVP policy |
 
-Roles are organization-scoped and permission-based. Templates are bootstrap defaults, not hard-coded authorization logic.
+Roles are organization-scoped and enforced by the API. Editable permission systems, custom roles, and additional role templates are post-MVP.
 
 ## 7. Source-of-truth model
 
@@ -90,24 +89,23 @@ A test user can demonstrate this end-to-end path:
 
 ### 9.1 Included in the MVP
 
-- Secure login, logout, session management, users, roles, and permissions.
+- Administrator bootstrap, secure login/logout, server-side sessions, and the fixed `ADMIN`/`OPERATOR` role policy.
 - One bootstrapped organization per installation.
 - Shopify connection configuration and health.
 - Initial and incremental import of Shopify products, variants, locations, inventory levels, customers, orders, and required fulfilment references.
 - Verified, durable, idempotent Shopify webhook ingestion.
 - Order list, details, operational state transitions, and timeline.
-- Customer list, details, and addresses.
-- Product/variant read views and inventory by location.
+- Customer data needed by order import and order details; dedicated customer-management screens are deferred.
+- Read-only catalog and inventory views by Shopify location.
 - Official WhatsApp Business Cloud API outbound approved-template messages and message status webhooks.
 - Manual order confirmation before shipment creation.
-- `CourierProvider` contract and `FakeCourierProvider`.
-- Live Ozone adapter only if the external documentation, credentials, status mapping, and test environment pass the readiness gate in `INTEGRATIONS.md`.
-- Shipment list, detail, tracking, courier events, and exception visibility.
+- `CourierProvider`, `FakeCourierProvider`, and an `OzoneCourierProvider` skeleton gated by official documentation.
+- Ozone shipment creation, tracking, and status synchronization only for the client-MVP release level after the Ozone gate passes.
+- Shipment/tracking visibility in order details and the operational timeline.
 - Appropriate tracking/fulfilment synchronization back to Shopify.
 - Background jobs, retries, dead-letter visibility, synchronization health, and manual retry controls.
-- Dashboard with operational counts and failure indicators.
-- Integration events, failed jobs, audit logs, health endpoints, structured logs, and OpenAPI documentation.
-- Docker Compose local environment and production container image plan.
+- Dashboard with the minimum operational counts and failure indicators.
+- Integration-event visibility, failed-job visibility/retry, critical-action audit records, health endpoints, and structured logs.
 
 ### 9.2 Excluded from the MVP
 
@@ -118,6 +116,10 @@ A test user can demonstrate this end-to-end path:
 - Shopify embedded application UI.
 - CRM-originated product/catalog editing.
 - CRM-managed stock deductions, reservations, purchasing, or warehouse transfers.
+- Editable permission systems, roles beyond `ADMIN` and `OPERATOR`, and a dedicated customer-management area.
+- Advanced analytics, large reporting dashboards, custom dashboard builders, and native mobile applications.
+- Advanced privacy-operation workflows and per-field customer-data encryption.
+- Large-scale performance targets and disaster-recovery automation beyond a documented basic backup procedure.
 - Advanced BI, accounting, invoicing, payment processing, marketing automation, and returns-merchandise authorization workflows.
 - Mobile-native applications.
 - Live Ozone behavior based on assumptions or reverse-engineering.
@@ -177,8 +179,8 @@ Requirement identifiers are stable references for acceptance tests.
 - **FR-AUTH-04:** Disabled users cannot establish or continue sessions.
 - **FR-AUTH-05:** Every business query and mutation is scoped to the authenticated organization.
 - **FR-AUTH-06:** Authorization is enforced by the API using permissions, not hidden UI elements alone.
-- **FR-AUTH-07:** Administrators can create, update, disable, and assign roles to users.
-- **FR-AUTH-08:** Administrators can manage custom roles without changing code.
+- **FR-AUTH-07:** Administrators can create, update, disable, and assign only the fixed `ADMIN` and `OPERATOR` roles to users.
+- **FR-AUTH-08:** The API rejects role or permission mutations outside the fixed MVP policy; editable permission systems are post-MVP.
 
 ### 11.2 Dashboard
 
@@ -214,7 +216,7 @@ Requirement identifiers are stable references for acceptance tests.
 
 ### 11.5 Customers, products, and inventory
 
-- **FR-CUS-01:** Users can search customers and view contact details, addresses, and related orders subject to permissions.
+- **FR-CUS-01:** Authorized order-detail views can show the imported customer contact, address, and related-order references needed for operations; a dedicated customer-management screen is post-MVP.
 - **FR-CUS-02:** Customer duplicates are prevented per external source identity; no automatic cross-source identity merge is in MVP.
 - **FR-CAT-01:** Users can search and view Shopify products, variants, SKUs, and source state.
 - **FR-INV-01:** Users can view available inventory by variant and Shopify location with last-synchronized time.
@@ -268,26 +270,20 @@ Requirement identifiers are stable references for acceptance tests.
 | Dashboard | Operational counts, failure summary, sync freshness |
 | Orders | Search, filters, pagination, status badges, sync indicators |
 | Order details | Facts, independent statuses, confirmation action, shipment/message panels, unified timeline |
-| Customers | Search/list and detail with addresses and orders |
-| Products | Product/variant read view and source freshness |
-| Inventory | Variant quantities by location and freshness |
-| Shipments | Search/list, tracking, normalized/raw status, events, exceptions |
-| Shopify settings | Non-secret configuration, connection test, scopes/health, sync runs |
-| WhatsApp settings | Non-secret identifiers, template mappings, connection/webhook health, message status |
-| Ozone settings | Blocked/live readiness state or conspicuous fake-provider state |
+| Catalog and inventory | Read-only product/variant and location inventory view |
+| Integration configuration and health | Configured/not configured, connection health, last synchronization, and safe errors; never existing secrets |
 | Integration events | Inbox/outbox processing state, sanitized errors, retry action |
 | Failed jobs | Queue/job class, attempts, failure, next action |
 | Users and roles | User lifecycle, role and permission assignment |
-| Audit logs | Filtered immutable activity view |
 
 All screens require loading, empty, permission-denied, stale-data, validation, and recoverable error states. Destructive or externally consequential actions require clear confirmation.
 
 ## 13. Non-functional requirements
 
 - **NFR-01 Availability:** A single process restart does not lose a webhook accepted with a success response or an outbox event committed to PostgreSQL.
-- **NFR-02 Performance:** At the agreed reference dataset, p95 API read latency is under 500 ms and p95 ordinary mutation latency is under 1 s, excluding external provider completion.
+- **NFR-02 Performance:** Core lists are paginated and responsive on the development-store dataset; large-scale performance targets are post-MVP.
 - **NFR-03 Webhook response:** After signature verification and durable inbox write, webhook endpoints respond within 5 seconds and defer business processing.
-- **NFR-04 Scale baseline:** Validate at least 100,000 orders, 100,000 customers, 50,000 variants, and 1,000,000 integration/audit events without unbounded API queries.
+- **NFR-04 MVP verification:** Validate the development-store dataset, multiple orders with different products and quantities, duplicate/retry scenarios, token renewal, and database/idempotency constraints. Enterprise-scale load testing is post-MVP.
 - **NFR-05 Consistency:** Domain updates and outbox writes are atomic; consumer processing is at-least-once and handlers are idempotent.
 - **NFR-06 Recovery:** PostgreSQL backups are automated and restore-tested before production acceptance. Target RPO is 24 hours and target RTO is 4 hours unless the client contracts stricter values.
 - **NFR-07 Security:** Meet the controls in `SECURITY.md`, including Argon2id, secure cookies, CSRF protection, least privilege, secret redaction, encryption in transit, and dependency scanning.
@@ -325,12 +321,13 @@ These are MVP validation indicators, not contractual production service levels.
 
 ### Blocking external inputs
 
-1. **Shopify access:** Client ID, client secret, and shop domain alone do not establish an Admin API session. The project needs either a documented OAuth installation/callback flow with offline token storage or a valid Admin API access token provisioned by an approved method.
-2. **Shopify contract:** Required API version, app distribution type, granted access scopes, webhook subscriptions, privacy/compliance webhooks, fulfilment-order behavior, and test-store scenarios are not specified.
+1. **Shopify access:** The MVP uses `SHOPIFY_SHOP_DOMAIN`, `SHOPIFY_CLIENT_ID`, and `SHOPIFY_CLIENT_SECRET` server-side. The API token is obtained with client credentials, expires after 24 hours, and is renewed automatically. No callback is required for the current same-organization store.
+2. **Future Shopify authentication:** If the app is later installed on stores belonging to unrelated merchant organizations, implement Shopify's authorization-code flow. That onboarding is post-MVP and must not block this test-store integration.
+3. **Shopify contract:** Required least-privilege scopes, webhook subscriptions, privacy/compliance webhooks, fulfilment-order behavior, and test-store scenarios must be confirmed against GraphQL Admin API `2026-07`.
 3. **WhatsApp onboarding:** Meta app ID/secret, business account ID, phone number ID, permanent system-user access token, webhook verify token, approved templates/locales/variables, recipient consent policy, and test numbers are absent.
 4. **Ozone:** Official base URLs, authentication, endpoint schemas, status catalogue, webhook/polling behavior, idempotency support, rate limits, sandbox, and test credentials are absent. Live implementation and acceptance are blocked.
 5. **Privacy:** Data retention, deletion/anonymization, subject-request process, backup retention, data residency, and controller/processor responsibilities need client/legal approval.
-6. **Operations:** Production host, domain, TLS termination, email/password recovery method, backup destination, monitoring destination, incident contacts, and expected data volume are not supplied.
+6. **Operations:** Production host, domain, TLS termination, password recovery method, backup destination, monitoring destination, incident contacts, and basic backup procedure are not supplied.
 
 ### Decisions needed before the affected milestone
 

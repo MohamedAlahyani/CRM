@@ -144,8 +144,10 @@ Normalized external product/customer/order types must contain:
 
 ### 4.1 Responsibilities
 
-- Authenticate to the Shopify Admin API using the approved installation/access-token method.
-- Pin and expose the configured Shopify API version.
+- Authenticate to the Shopify Admin API with Shopify's client-credentials grant for the current same-organization development app/store.
+- Treat [Shopify's client-credentials documentation](https://shopify.dev/docs/apps/build/authentication-authorization/access-tokens/client-credentials-grant) and [GraphQL Admin API `2026-07`](https://shopify.dev/docs/api/admin-graphql/2026-07) as the source of truth.
+- Exchange `SHOPIFY_CLIENT_ID` and `SHOPIFY_CLIENT_SECRET` server-side at `https://{shop}.myshopify.com/admin/oauth/access_token`, cache the returned token securely, and renew it automatically because it expires after 24 hours.
+- Pin and expose `SHOPIFY_API_VERSION=2026-07`.
 - Register or validate required webhook subscriptions where supported by the app model.
 - Verify webhook HMAC against raw request bytes and bind the event to the configured shop.
 - Import and reconcile products, variants, locations, inventory, customers, orders, and required fulfilment references.
@@ -204,17 +206,19 @@ Shopify is the source of truth and normally adjusts tracked inventory as part of
 
 The following must be confirmed before implementation: exact Admin API version, required scopes, fulfilment-order ownership, partial fulfilment rules, tracking update semantics, customer notification policy, and whether the installed app may manage the relevant fulfilment orders.
 
-### 4.6 Shopify readiness gaps
+### 4.6 Shopify authentication decision and remaining gates
 
 | Gap | Why it matters | Gate |
 |---|---|---|
-| Access token/OAuth flow not supplied | Client credentials and domain alone do not authorize Admin API calls | Block connection milestone |
-| API version absent | Schemas, topics, and fulfilment operations change | Select and pin before adapter coding |
+| Same-organization client-credentials grant | Current development app and store belong to the same Shopify organization | Use for MVP; no OAuth callback |
+| Token lifecycle | Token is valid for 24 hours | Cache server-side and renew automatically |
+| API version | Schemas, topics, and fulfilment operations change | Pin `2026-07` |
 | Access scopes absent | Imports/webhooks/fulfilment may be forbidden | Approve least-privilege scopes |
-| App distribution/install path unclear | Determines OAuth and token lifecycle | Document install/reinstall/uninstall |
 | Webhook subscriptions absent | Incremental sync cannot be accepted | Approve topic matrix |
 | Privacy webhook/policy inputs absent | Compliance risk | Complete before production |
 | Fulfilment model untested | Tracking update may fail or duplicate | Test with representative orders |
+
+If the app is later installed on stores belonging to unrelated merchant organizations, use Shopify's authorization-code flow. That onboarding is post-MVP and must not block the current test-store integration. Credentials and tokens are never returned to the frontend or written to logs.
 
 ## 5. `MessagingProvider`
 
@@ -528,10 +532,10 @@ The UI and logs use safe codes and correlation IDs. Restricted diagnostic views 
 
 ## 13. Required pre-coding integration decisions
 
-- Shopify authorization/install method and least-privilege scope matrix.
-- Pinned Shopify Admin API version and webhook topic matrix.
+- Shopify client-credentials configuration and least-privilege scope matrix for the current store.
+- Pinned Shopify GraphQL Admin API `2026-07` and webhook topic matrix.
 - Shopify fulfilment ownership/allocation and notify-customer policy.
 - WhatsApp confirmation template, locale selection, variable map, and consent policy.
 - Automatic versus operator-triggered order confirmation message.
-- Ozone documentation availability; otherwise first client test explicitly uses `FakeCourierProvider`.
+- Ozone documentation availability; otherwise release only the technical demonstration: live Shopify, live WhatsApp, and clearly labelled `FakeCourierProvider`.
 - Default country, E.164 normalization, COD amount calculation, and address validation policy.

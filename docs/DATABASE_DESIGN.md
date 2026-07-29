@@ -99,11 +99,13 @@ Authentication identity is global, while access to an organization is through me
 
 ### 3.4 `role`, `permission`, `membership_role`, `role_permission`
 
-- `role`: organization-scoped role with unique `(organization_id, name_normalized)`, display name, description, `is_system_template`.
+- `role`: organization-scoped role with unique `(organization_id, name_normalized)`, display name, description, `is_system_template`. MVP seeds exactly `ADMIN` and `OPERATOR`.
 - `permission`: application-defined permission key and description; globally unique key.
 - `membership_role`: unique `(membership_id, role_id)`.
 - `role_permission`: unique `(role_id, permission_id)`.
 - Database/application validation ensures membership and role belong to the same organization.
+
+The schema may retain permission rows for forward compatibility, but MVP authorization exposes only the fixed role policy. Administrators cannot create custom roles or edit permission mappings until post-MVP.
 
 Initial permission families:
 
@@ -127,7 +129,6 @@ sync.run
 jobs.read
 jobs.retry
 users.manage
-roles.manage
 audit.read
 ```
 
@@ -246,7 +247,7 @@ Addresses are synchronized contact records. Orders use immutable snapshots.
 | `confirmed_at`, `confirmed_by_user_id` | CRM confirmation |
 | `currency_code` | ISO currency |
 | amount minor fields | Subtotal, discount, shipping, tax, total, outstanding where supplied |
-| `customer_note_encrypted` | Nullable, access-controlled |
+| `customer_note` | Nullable, minimized operational note; per-field customer-data encryption is post-MVP |
 | `source_created_at`, `source_updated_at` | Ordering/staleness protection |
 | `imported_at`, `last_synced_at` | CRM freshness |
 | timestamps/version | Mutable aggregate metadata |
@@ -433,7 +434,7 @@ No update/delete path is exposed to application users. Index organization/time, 
 3. Transactions verify related entity organization IDs.
 4. Unique business keys include `organization_id` unless intentionally global.
 5. Authorization tests attempt cross-organization IDs even though production MVP provisions one organization.
-6. PostgreSQL row-level security is not required for MVP; if future shared-database SaaS is implemented, RLS is evaluated as defense in depth.
+6. PostgreSQL row-level security is not required for the single-tenant MVP; if future shared-database SaaS is implemented, RLS is evaluated as defense in depth.
 
 This is architectural preparation, not a claim that MVP is production multi-tenant.
 
@@ -462,14 +463,14 @@ Before each module is accepted:
 - Every foreign key has an index when used for lookup.
 - List screens have composite indexes matching organization, filters, and sort.
 - Event/timeline queries use cursor pagination by `(occurred_at, id)`.
-- Search does not decrypt and scan PII; use approved deterministic search hashes for exact contact lookup.
+- Search is limited to MVP fields and avoids unbounded PII scans; per-field encryption/search indexes are post-MVP unless a later release gate requires them.
 - No unbounded `findMany` or N+1 relationship loading.
 - `EXPLAIN ANALYZE` is captured for critical list queries at the reference dataset.
 - Outbox, inbox, session, idempotency, and integration-operation cleanup queries are indexed.
 
 ## 14. Open database decisions
 
-- Exact encryption mechanism: application-level envelope encryption versus PostgreSQL extension, based on hosting/key-management capability.
+- Whether and how to add per-field customer-data encryption before broader commercial deployment.
 - Approved fields and retention for raw Shopify/Meta payloads.
 - Whether exact-name/customer search is required; privacy-preserving search limitations must be accepted.
 - Expected production volume and required reporting history.

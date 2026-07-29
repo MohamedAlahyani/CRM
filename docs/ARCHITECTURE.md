@@ -46,7 +46,7 @@ flowchart TB
         Worker["apps/worker\nBullMQ processors + schedulers"]
         Core["packages/core\nDomain + application modules"]
         Contracts["packages/contracts\nDTO schemas + provider ports"]
-        Integrations["packages/integrations\nShopify / WhatsApp / Fake Courier / Ozone gate"]
+        Integrations["packages/integrations\nShopify / WhatsApp / Fake Courier / Ozone skeleton"]
         DBPkg["packages/database\nPrisma schema + client + migrations"]
         Config["packages/config\nvalidated configuration"]
     end
@@ -322,7 +322,7 @@ Exact fulfilment-order scopes, ownership, line allocation, and notification sett
 - Cookie-authenticated browser requests require CSRF protection for unsafe methods.
 - Mutating endpoints accept `Idempotency-Key` where replay is plausible and `If-Match`/version where concurrency matters.
 - Errors use a stable envelope containing `code`, `message`, `correlationId`, and field errors; no stack/provider secret is returned.
-- List endpoints use bounded page size; high-volume timelines/events use cursor pagination.
+- List endpoints use bounded page size; integration events and timelines use cursor pagination.
 - OpenAPI excludes secret configuration values and documents required permissions.
 
 Representative module routes:
@@ -330,10 +330,8 @@ Representative module routes:
 ```text
 /api/v1/auth
 /api/v1/users
-/api/v1/roles
 /api/v1/dashboard
 /api/v1/orders
-/api/v1/customers
 /api/v1/products
 /api/v1/inventory
 /api/v1/shipments
@@ -350,6 +348,7 @@ Representative module routes:
 /webhooks/v1/courier
 ```
 
+The MVP has basic user management for the fixed `ADMIN` and `OPERATOR` roles. There is no custom-role or dedicated customer-management route in the MVP; customer data is exposed only where needed by order details.
 These route groups define ownership, not a frozen endpoint-by-endpoint API contract.
 
 ## 11. Configuration and secrets
@@ -357,10 +356,10 @@ These route groups define ownership, not a frozen endpoint-by-endpoint API contr
 Configuration is validated at process startup. Categories:
 
 - Public operational configuration: organization name/time zone, feature flags, non-secret provider identifiers.
-- Secrets: database URL, Redis credentials, session signing/pepper keys, field-encryption key, Shopify secret/token, Meta app secret/token, webhook verification values, future Ozone credentials.
+- Secrets: database URL, Redis credentials, session keys, Shopify client secret and cached access token, Meta app secret/token, webhook verification values, and future Ozone credentials.
 - Runtime settings: ports, log level, worker concurrency, retry policies, API versions, data limits.
 
-Secrets are supplied through environment variables or mounted secret files for the initial self-hosted deployment. Provider settings screens display presence, suffix/fingerprint, last validation, and rotation state, never the value. Production secrets must not be compiled into Next.js public variables or images.
+Secrets are supplied through environment variables or mounted secret files for the initial self-hosted deployment. The required Shopify variables are `SHOPIFY_SHOP_DOMAIN`, `SHOPIFY_CLIENT_ID`, `SHOPIFY_CLIENT_SECRET`, and `SHOPIFY_API_VERSION=2026-07`. The backend caches and renews the 24-hour Shopify token server-side. Provider screens show only configured/not configured, health, last synchronization, and safe errors; they never return existing secrets or tokens. Production secrets must not be compiled into Next.js public variables or images.
 
 ## 12. Deployment topology
 
@@ -402,7 +401,7 @@ Logs redact authorization headers, cookies, tokens, passwords, webhook secrets/s
 | Modular monolith | One team/product and tightly coupled transactions | Enforce module boundaries in code/tests |
 | PostgreSQL authority | Strong constraints and atomic outbox | Redis is never business truth |
 | Async external effects | Provider latency/failure isolation | UI shows pending states |
-| Provider ports/adapters | Future YouCan/WooCommerce/couriers | Normalized contracts must avoid least-common-denominator leakage |
+| Provider ports/adapters | Future commerce/courier providers | Normalized contracts must avoid least-common-denominator leakage |
 | Organization ID from day one | Future tenancy migration path | Every repository method requires organization context |
 | Separate statuses | Prevent destructive conflation | UI/data model carry four status dimensions |
 | Fake courier until Ozone contract | Honest, testable development | Live acceptance remains gated |

@@ -29,7 +29,7 @@ Security controls are release requirements, not optional post-launch hardening.
 - Password hashes and active sessions.
 - Shopify, Meta, and future Ozone credentials.
 - Webhook verification secrets.
-- Field-encryption keys and backup keys.
+- Backup keys and any future field-encryption keys.
 - Customer names, phone numbers, email addresses, physical addresses, notes, and order history.
 - Order values, operational decisions, shipment/tracking data, and message status.
 - Roles/permissions, audit history, outbox operations, and integration diagnostics.
@@ -89,7 +89,7 @@ Security controls are release requirements, not optional post-launch hardening.
 
 - Browser receives an opaque random token with at least 256 bits of entropy.
 - Database stores only a cryptographic hash of the secret token plus a non-secret selector if required.
-- Cookie attributes in production: `HttpOnly`, `Secure`, `SameSite=Lax` or stricter after OAuth callback analysis, path `/`, no broad parent domain.
+- Cookie attributes in production: `HttpOnly`, `Secure`, `SameSite=Lax` or stricter, path `/`, no broad parent domain. The current Shopify client-credentials flow has no browser OAuth callback; a future authorization-code onboarding flow must re-review cookie/CSRF behavior.
 - Use a host-prefixed cookie name when deployment topology permits.
 - Default idle timeout: 8 hours. Default absolute timeout: 7 days. Client may require stricter values.
 - Update `last_seen_at` at a throttled interval, not every request.
@@ -129,10 +129,10 @@ High-consequence permissions are separate:
 - Order confirmation: `orders.confirm`.
 - Shipment create/retry: `shipments.create`, `shipments.retry`.
 - Message send/retry: `messages.send`, `messages.retry`.
-- User/role changes: `users.manage`, `roles.manage`.
+- User changes and fixed-role assignment: `users.manage`.
 - Audit access: `audit.read`.
 
-No role may grant permissions it does not itself possess unless the user has an explicit super-administrator policy. For MVP, only the bootstrapped administrator manages roles.
+The MVP exposes exactly two roles, `ADMIN` and `OPERATOR`, with a fixed permission matrix enforced by the API. Administrators can manage users and assign those two roles, but cannot create custom roles or edit permission mappings. Additional roles and editable permission systems are post-MVP.
 
 ### 7.3 Cross-organization testing
 
@@ -143,6 +143,8 @@ Automated tests seed a second organization in test environments and verify that 
 ### 8.1 Secret handling
 
 - Initial deployment injects secrets through environment variables or mounted secret files; production operators should use a managed secret store when available.
+- Shopify MVP variables are `SHOPIFY_SHOP_DOMAIN`, `SHOPIFY_CLIENT_ID`, `SHOPIFY_CLIENT_SECRET`, and `SHOPIFY_API_VERSION=2026-07`. The backend exchanges the first three as client credentials, caches the 24-hour access token server-side, and renews it automatically.
+- Shopify client secrets and access tokens are never logged, committed, placed in browser code, or returned by the API. The frontend receives only configured/not-configured state, health, last synchronization, and safe errors.
 - Next.js public environment variables must never contain provider secrets, database/Redis credentials, session keys, or encryption keys.
 - API responses expose configured/not-configured, safe account identifier, last validation, and optional token expiry only.
 - Secret changes are write-only and audited as “secret rotated/updated,” never with values.
@@ -152,7 +154,7 @@ Automated tests seed a second organization in test environments and verify that 
 ### 8.2 Encryption
 
 - All external and internal network traffic uses TLS in production; database/Redis TLS is required when traffic leaves a trusted single-host private network.
-- Highly sensitive customer fields and unavoidable raw payloads use authenticated application-level encryption when the hosting key model permits.
+- The MVP minimizes customer data and restricts access. Per-field customer-data encryption is deferred until required before broader commercial deployment; if introduced, it must use authenticated application-level encryption and managed key rotation.
 - Use a versioned envelope containing algorithm/key version/nonce/ciphertext/tag.
 - Keys are independent from database backups and support rotation by key version.
 - Searchable exact phone/email uses a keyed HMAC normalization index, not deterministic plaintext encryption.
@@ -294,7 +296,7 @@ Deletion must account for operational/legal retention and backup limitations. Th
 
 ## 16. Backup, recovery, and availability
 
-- Automated encrypted PostgreSQL backup at least daily for the initial RPO, with protected off-host copy.
+- Document a basic encrypted PostgreSQL backup procedure for the controlled client test. Automated off-host backup, restore automation, and stronger RPO/RTO commitments are required before broader commercial deployment.
 - Restore drill into an isolated environment before production and on a recurring schedule.
 - Back up required configuration metadata separately from secret values; document secret recovery/rotation.
 - Redis is not the sole copy of accepted work. After Redis loss, republish from PostgreSQL outbox/integration-operation state.

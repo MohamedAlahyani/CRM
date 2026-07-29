@@ -1,489 +1,275 @@
 # Commerce Operations CRM — MVP Acceptance
 
-## 1. Purpose and release labels
+## 1. Purpose and release levels
 
-This document defines objective acceptance for the first client-testable MVP.
+This document defines bounded acceptance for the first client demonstration and the client MVP. It does not introduce enterprise-scale targets.
 
-Two distinct release labels are allowed:
+### Technical demonstration
 
-1. **Core MVP — simulated courier:** Shopify and WhatsApp Cloud are live/test-sandbox integrations; courier behavior uses the clearly labelled `FakeCourierProvider`.
-2. **Core MVP — live Ozone:** all core criteria pass and the Ozone addendum passes against the official Ozone test environment.
+```text
+Live Shopify + Live WhatsApp + FakeCourierProvider
+```
 
-The first label must never be described as a live Ozone integration. If Shopify or WhatsApp prerequisites are unavailable, their affected cases remain blocked and the release is not an accepted end-to-end MVP.
+This release proves the workflow while Ozone access is unavailable. It must be labelled **Simulated courier — not Ozone** in the UI, shipment data, logs, and evidence. It is not a live Ozone acceptance.
+
+### Client MVP
+
+```text
+Live Shopify + Live WhatsApp + Live Ozone Express
+```
+
+The client MVP is accepted only after official Ozone documentation, sandbox/test credentials, shipment creation, tracking, and status synchronization have passed the Ozone addendum. If those inputs are unavailable, the result remains the technical demonstration.
 
 ## 2. Acceptance governance
 
-- Product owner, operations representative, technical lead, and deployment owner record sign-off.
-- Every case records build/image version, environment, date/time, tester, evidence, and result.
-- `PASS` means expected outcome occurred with no critical defect.
-- `FAIL` means expected outcome did not occur or data/security integrity was compromised.
-- `BLOCKED` is permitted only for a documented missing external dependency and is not equivalent to pass.
-- Severity 1 or 2 defects block release. Lower-severity defects require recorded disposition.
-- Test customer data must be synthetic or approved for the environment.
-- Provider credentials must be test/sandbox credentials where supported; production effects require explicit controlled approval.
+- Each case records build/version, environment, tester, timestamp, evidence, and result.
+- Test data is synthetic or approved for the target environment.
+- Provider credentials are server-side and never appear in browser source, API responses, logs, jobs, or audit metadata.
+- The deployed MVP is single-tenant with one bootstrapped organization, but organization-scoped code paths are tested.
+- The only MVP roles are `ADMIN` and `OPERATOR`.
 
 ## 3. Entry prerequisites
 
-### 3.1 Common environment
+### 3.1 Common
 
-- Versioned web, API, and worker images deployed from one release.
-- PostgreSQL and Redis are private, healthy, and use persistent/recoverable configuration.
-- TLS and production cookie policy are active.
-- Database migrations and secure organization/admin bootstrap completed.
-- Logs/metrics/alerts are accessible to authorized operators.
-- Encrypted backup completed and a restore drill has passed for the release candidate or compatible schema.
-- Organization name, time zone, locale, default phone country, roles, and permissions are configured.
+- Web, API, worker, PostgreSQL, and Redis processes are healthy.
+- Administrator bootstrap creates the one organization and first administrator.
+- `ADMIN` and `OPERATOR` login, session, logout, and API authorization are configured.
+- Health checks, masked structured logs, correlation IDs, transactional outbox, and background job processing are available.
+- Basic backup procedure is documented.
 
 ### 3.2 Shopify
 
-- Approved Shopify authorization method has yielded usable server-side Admin API access.
-- Shop domain, pinned API version, granted scopes, webhook topic matrix, and callback URL are recorded.
-- App is installed on the designated test store.
-- Test store supports representative COD/order, customer, product, inventory, cancellation, and fulfilment scenarios.
+```env
+SHOPIFY_SHOP_DOMAIN=
+SHOPIFY_CLIENT_ID=
+SHOPIFY_CLIENT_SECRET=
+SHOPIFY_API_VERSION=2026-07
+```
+
+- The development app and store belong to the same Shopify organization.
+- The backend uses the client-credentials grant, exchanges credentials server-side, caches the token, and renews it around its 24-hour expiry.
+- No OAuth callback is required for this current store.
+- The development store contains representative products, variants, locations, inventory, customers, and test orders.
+- Required least-privilege scopes, webhook topics, and fulfilment permissions are approved.
 
 ### 3.3 WhatsApp
 
-- Approved Meta app/business configuration, server-held token, phone number ID, app secret, and webhook verification settings are configured.
-- At least one order-confirmation template with locale and exact parameters is approved.
-- Approved test recipients and consent policy are recorded.
+- Official Meta Cloud API access, phone/account identifiers, webhook verification, approved order-confirmation template, locale/variables, consent policy, and test recipient are configured server-side.
 
 ### 3.4 Courier
 
-- For simulated acceptance: active `FAKE_COURIER` connection and visible simulation warning.
-- For live Ozone acceptance: every readiness item in `INTEGRATIONS.md` is approved and sandbox credentials are configured.
+- Technical demonstration: `FakeCourierProvider` is enabled and visibly simulated.
+- Client MVP: official Ozone readiness gate is complete and `OzoneCourierProvider` is enabled.
 
 ## 4. Reference test data
 
-Create:
+Prepare at least:
 
-- Administrator, operations manager, order operator, fulfilment operator, and read-only analyst users.
-- A second test organization used only for automated isolation tests.
-- Shopify product with at least two variants.
-- At least two Shopify locations with distinct inventory.
-- Customer with valid E.164 WhatsApp number and complete shipping address.
-- Customer with invalid/missing phone to test non-blocking message failure.
-- New COD order with two shippable lines.
-- Cancelled order.
-- Already fulfilled or partially allocated order representative of the store's fulfilment model.
-- Provider failure scripts/fixtures for retryable, terminal, rate-limit, out-of-order, duplicate, and ambiguous-result behavior.
+- two products with different variants and quantities;
+- two Shopify locations with tracked inventory;
+- multiple orders with distinct products, quantities, totals, and delivery addresses;
+- one valid WhatsApp customer and one missing/invalid-phone customer;
+- one order suitable for retry/failure and duplicate-protection scenarios.
 
-No test relies on undocumented Ozone fields/statuses.
+Do not rely on 100,000 orders, 1,000,000 events, enterprise load, or production disaster simulation. Those are post-MVP verification.
 
-## 5. End-to-end golden path
+## 5. Golden path
 
-### AC-E2E-01 — Shopify order to tracked fulfilment
+### AC-E2E-01 — Shopify order to courier tracking
 
-**Given**
+1. Create a test order in Shopify.
+2. Deliver a valid Shopify order webhook and process it asynchronously.
+3. Confirm exactly one CRM order, customer reference, address snapshot, line snapshots, and source mappings.
+4. Verify the order appears in the Orders screen and its timeline shows import and WhatsApp activity.
+5. Verify the approved WhatsApp confirmation template is sent once and its provider message ID is stored.
+6. An authorized employee confirms the order once.
+7. Create one courier shipment only after confirmation/readiness.
+8. Verify tracking and raw/normalized courier status appear in CRM.
+9. Synchronize approved fulfilment/tracking information back to Shopify once.
+10. Verify courier status changes remain distinct from Shopify financial, Shopify fulfilment, and CRM operational status.
+11. Verify failures, retries, external events, and audit records remain visible.
 
-- Shopify, WhatsApp, and selected courier provider are healthy;
-- a valid approved confirmation template is configured;
-- no CRM record exists for the new Shopify order;
-- the operator has confirmation and shipment permissions.
+The technical demonstration uses `FakeCourierProvider`; the client MVP uses live Ozone and must pass the Ozone cases below.
 
-**When**
+## 6. Authentication and authorization
 
-1. A customer places the representative Shopify order.
-2. Shopify delivers the order event.
-3. The operator opens the order and confirms it.
-4. The worker creates the shipment.
-5. Courier status advances to out for delivery and delivered.
+### AC-AUTH-01 — Login and session
 
-**Then**
+An active provisioned user can log in. The session is an opaque secure HTTP-only cookie backed by a revocable server-side record; it is not stored in local storage or URLs.
 
-- the order appears once in the CRM;
-- customer, address snapshot, lines, amounts, source timestamps, Shopify financial status, Shopify fulfilment status, CRM operational status, and courier status are correct and separate;
-- Shopify inventory values are mirrored and are not decremented by CRM confirmation or shipment;
-- one confirmation message intent exists, has a provider message ID when accepted, and reflects reported delivery statuses;
-- one active primary shipment exists with provider identity/tracking;
-- order/shipment timeline shows import, message, employee confirmation, shipment creation, courier events, and Shopify outbound result with actors/times;
-- tracking/fulfilment appears in Shopify once according to the approved fulfilment policy;
-- no credential or unredacted customer payload appears in browser source, API errors, or logs;
-- all asynchronous operations finish or expose a clear recoverable/terminal status.
+### AC-AUTH-02 — Failure and lifecycle
 
-## 6. Authentication, authorization, and organization cases
+Invalid, disabled, expired, revoked, and stale sessions receive safe responses. Logout revokes the current session. Login is rate-limited and does not reveal whether an email exists.
 
-### AC-AUTH-01 — Valid login and cookie
+### AC-AUTH-03 — Fixed role matrix
 
-An active provisioned user can log in. The session cookie is opaque, `HttpOnly`, `Secure` in TLS environment, has the approved `SameSite` and path policy, and is absent from local storage and URLs.
+- `ADMIN` can manage users, inspect/configure environment-backed integrations, run supported synchronization, retry safe failures, confirm orders, and create shipments.
+- `OPERATOR` can read operational screens and perform only the explicitly granted order/confirmation and operational actions defined by the MVP policy.
+- No API call can create custom roles, edit permission mappings, or bypass the role policy.
+- Direct API authorization matches UI authorization.
 
-### AC-AUTH-02 — Generic invalid login
+### AC-AUTH-04 — Organization scope and audit
 
-Unknown email, wrong password, disabled user, and disabled membership return the same user-facing authentication failure shape. No case reveals whether an account exists.
+Organization-scoped queries reject IDs from a seeded second test organization. Login success, user changes, order confirmation, message resend, shipment creation/retry, and manual synchronization create append-only audit records without secrets or unnecessary PII.
 
-### AC-AUTH-03 — Session lifecycle
+## 7. Shopify cases
 
-Logout revokes the current session. Expired, revoked, password-policy-invalidated, or administrator-revoked sessions cannot access protected endpoints. Session fixation test confirms a new token after login.
+### AC-SHP-01 — Client-credentials connection
 
-### AC-AUTH-04 — CSRF
+Connection health obtains a token through the client-credentials grant, uses GraphQL Admin API `2026-07`, and renews an expired token automatically. The UI shows shop identity, configured/health state, API version, last synchronization, and safe errors; it never returns the client secret or access token.
 
-Every unsafe cookie-authenticated REST endpoint rejects absent/invalid CSRF token and disallowed Origin. Valid same-origin requests succeed. Webhooks do not depend on browser CSRF tokens.
+### AC-SHP-02 — Import and rerun
 
-### AC-AUTH-05 — Permission matrix
+From an empty CRM, import representative locations, products, variants, inventory, customers, and orders. Show progress and counts. Rerun the import and produce updates/no-ops, not duplicates.
 
-- Read-only analyst cannot confirm/cancel orders, create/retry shipments/messages, or modify integrations/users/roles.
-- Order operator can confirm but cannot manage credentials/roles.
-- Fulfilment operator can create/retry shipments according to role but cannot manage users.
-- Administrator can perform configured administrative actions.
-- Direct API calls are denied identically to hidden/disabled UI actions.
+### AC-SHP-03 — Duplicate webhook
 
-### AC-AUTH-06 — Cross-organization isolation
+Replay the same valid order webhook at least three times, including concurrent processing. One inbox identity and one business effect result; no duplicate order, line, customer source identity, or message intent is created.
 
-Automated tests using IDs from the second organization receive not-found/forbidden behavior and cannot read or mutate orders, customers, messages, shipments, integrations, jobs, users, roles, or audit logs across organizations.
+### AC-SHP-04 — Inventory authority
 
-### AC-AUTH-07 — Audit of sensitive actions
+After Shopify accepts an order and updates tracked inventory, CRM imports the resulting inventory state. Confirming or shipping in CRM performs no second inventory deduction or adjustment. Inventory events/reconciliation update the mirror and ledger only with synchronized source changes.
 
-Login success, user/role changes, integration setting/secret rotation, order confirmation, shipment retry, message retry, and manual sync/reconciliation create append-only audit records with actor, target, time, outcome, and correlation ID but no secret/PII payload.
+### AC-SHP-05 — Webhook security and reconciliation
 
-## 7. Shopify acceptance cases
+Tampered/invalid signatures and unknown shop identities create no business mutation. A missed update is repaired by reconciliation. Older source events cannot overwrite newer source facts.
 
-### AC-SHP-01 — Connection health
+### AC-SHP-06 — Fulfilment/tracking idempotency
 
-Settings shows the correct non-secret shop identity, pinned API version, granted/required capability result, last health time, and safe failure if token/scope is invalid. It never returns the token or client secret.
+Repeated outbox/job delivery produces one approved Shopify fulfilment/tracking effect. Insufficient scope, validation, rate-limit, transient, and already-fulfilled errors remain visible and safe to retry or resolve.
 
-### AC-SHP-02 — Initial synchronization
-
-From an empty CRM, a resumable initial sync imports representative locations, products, variants, inventory levels, customers, orders, and required fulfilment references. Counts and progress are visible. Rerunning produces updates/no-ops, not duplicates.
-
-### AC-SHP-03 — Duplicate order webhook
-
-Deliver the identical valid order webhook at least three times and run multiple workers. One inbox identity and one CRM order business effect result; attempts/delivery metadata may show repeats without duplicating order, lines, customer source identity, or message intent.
-
-### AC-SHP-04 — Out-of-order events
-
-Deliver a newer order update followed by an older event. Current source facts do not regress. Both verified events remain diagnosable with processing result.
-
-### AC-SHP-05 — Invalid webhook
-
-Tampered body, invalid signature, unknown shop/account, oversized body, and unsupported method are rejected without business mutation or trusted inbox event. Logs contain safe metadata only.
-
-### AC-SHP-06 — Reconciliation
-
-Withhold a supported update webhook, change the source, then run scheduled/manual reconciliation. CRM converges to Shopify without duplicate records, and the sync run reports the correction.
-
-### AC-SHP-07 — Inventory non-deduction
-
-Record Shopify inventory after order creation/import. Confirm and ship in CRM. CRM performs no additional inventory adjustment call and its mirror changes only in response to Shopify source/reconciliation.
-
-### AC-SHP-08 — Status separation
-
-Changing Shopify financial/fulfilment status updates only the corresponding mirrored fields unless an explicitly approved rule proposes a valid CRM transition. Courier and CRM statuses remain separately visible.
-
-### AC-SHP-09 — Fulfilment/tracking idempotency
-
-A shipment tracking intent sent repeatedly due to duplicate outbox/job delivery produces the approved single Shopify fulfilment/tracking effect. Stored external fulfilment identity permits reconciliation.
-
-### AC-SHP-10 — Fulfilment exceptions
-
-Test insufficient scope, already fulfilled allocation, cancelled order, provider validation error, rate limit, and transient error. CRM shipment remains intact; operation is retryable or terminal according to classification and shows a safe action.
-
-### AC-SHP-11 — Uninstall/privacy handling
-
-Applicable uninstall and mandatory privacy/compliance webhook cases for the approved Shopify app model are verified, idempotent, auditable, and follow the approved retention/anonymization policy.
-
-## 8. Orders, customers, catalog, and inventory cases
+## 8. Orders, catalog, inventory, and timeline
 
 ### AC-ORD-01 — Orders list
 
-Search, operational/financial/fulfilment/shipment/date/sync filters, sorting, and pagination return organization-scoped correct results. URL/query state is shareable where safe. Loading, empty, stale, permission, and error states are usable.
+Orders supports search, pagination, operational status, Shopify financial status, Shopify fulfilment status, courier status, date, and synchronization filters. Each status is displayed separately.
 
-### AC-ORD-02 — Order detail and snapshots
+### AC-ORD-02 — Details and snapshots
 
-Order detail shows source identity, amounts/currency, customer and immutable order address snapshot, lines/SKUs/quantities, all independent statuses, message/shipment panels, freshness, and chronological timeline.
+Order details show source facts, customer/address snapshot, lines, totals/currency, all status dimensions, message/shipment state, sync events, and a chronological timeline. Customer data is available here for operations; no dedicated customer-management screen is required.
 
-### AC-ORD-03 — Valid confirmation
+### AC-ORD-03 — Confirmation
 
-Authorized confirmation from the allowed state with expected version records one transition, actor/time, audit entry, and shipment-readiness intent.
+An authorized confirmation from `WAITING_CONFIRMATION` creates one CRM transition, actor/time audit record, and shipment-readiness intent. Repeated clicks or idempotency-key replays do not create another effect; stale versions return a conflict.
 
-### AC-ORD-04 — Concurrent/repeated confirmation
+### AC-ORD-04 — Invalid transitions
 
-Two simultaneous confirmations and a repeated idempotency key yield one transition/business effect. Same key with a different request fingerprint is rejected. A stale expected version returns a conflict without overwriting newer state.
+Confirmation is required before shipment creation. Invalid or cancelled-order transitions are rejected without external side effects.
 
-### AC-ORD-05 — Invalid transition
+### AC-CAT-01 — Read-only catalog/inventory
 
-Attempted transition outside the defined state machine is rejected and does not create an external side effect.
+Products, variants, SKUs, locations, quantities, and freshness match Shopify representative data. No catalog or inventory mutation action exists in the MVP. Stale data is visibly marked.
 
-### AC-ORD-06 — Cancellation separation
+## 9. WhatsApp cases
 
-CRM cancellation of an eligible order records the local transition but does not claim courier/Shopify cancellation unless a separate officially supported action succeeds. Source cancellation is displayed independently.
+### AC-WA-01 — Secret-safe configuration
 
-### AC-CUS-01 — Customer list/detail
+The integration view shows configured/health state, non-secret identifiers, template mapping, last webhook, last synchronization, and safe errors. It never returns access tokens, app secrets, or verify tokens.
 
-Authorized user can search approved fields and view customer, addresses, related orders, and freshness. Unauthorized roles cannot retrieve restricted detail through direct API calls.
+### AC-WA-02 — Confirmation template
 
-### AC-CAT-01 — Product/variant mirror
+An eligible imported order creates exactly one logical confirmation-message intent with a deterministic idempotency key. The accepted provider response stores the message ID and submitted time.
 
-Product and variant values match Shopify and are read-only. SKU search supports non-unique SKUs without conflating variants.
+### AC-WA-03 — Status webhook and duplicates
 
-### AC-INV-01 — Inventory by location
+Verified sent/delivered/read/failed events update the message timeline idempotently. Duplicate events and late lower-precedence events do not duplicate or regress the current projection.
 
-Inventory shows each representative variant at both Shopify locations with exact quantity and sync time. Stale data is marked. There is no inventory mutation action.
+### AC-WA-04 — Failure and resend
 
-## 9. WhatsApp acceptance cases
+Invalid phone, missing template/consent, rate-limit, and provider failures do not block Shopify order import. Retryable failures retry with bounded backoff; manual resend requires authorization, creates an audit record, and does not create a second logical intent.
 
-### AC-WA-01 — Configuration secrecy and health
+## 10. Courier and shipment cases
 
-Settings shows non-secret account/phone identity, configured template mapping, credential presence/expiry metadata if safe, webhook health, and connection result without returning access token, app secret, or verify token.
+### AC-COURIER-01 — Confirmation prerequisite
 
-### AC-WA-02 — Eligible confirmation message
+The API and UI reject shipment creation before authorized confirmation/readiness. No provider operation is emitted.
 
-An eligible new order creates exactly one message intent using the configured template/locale/parameters. Accepted send stores provider message ID and submitted time.
+### AC-COURIER-02 — Duplicate prevention
 
-### AC-WA-03 — Duplicate trigger
+Repeated clicks, identical requests, duplicate outbox delivery, worker retry, and concurrent workers produce one primary shipment operation. Ambiguous timeouts reconcile before any resend; if the provider cannot support safe lookup/idempotency, the operation becomes `RECONCILIATION_REQUIRED`.
 
-Replaying order processing, outbox publishing, or queue delivery does not create another CRM message for the same purpose/version. Any provider-level ambiguity is surfaced honestly rather than labelled exactly once.
+### AC-COURIER-03 — Status separation
 
-### AC-WA-04 — Status lifecycle
+Raw courier status, normalized courier status, and CRM operational status are stored separately. Unknown, out-of-order, and regressive statuses are retained and flagged without silently rewriting current state.
 
-Valid signed provider events for sent, delivered, read, and failed update the message projection and append status events. Duplicate events do not duplicate effects; a late lower-precedence event does not regress the projection.
+### AC-COURIER-04 — Fake-provider labelling
 
-### AC-WA-05 — Invalid webhook
+Technical-demo settings, shipment pages, tracking values, logs, and release evidence identify the provider as simulated. No fake result is presented as Ozone.
 
-Invalid challenge/signature, tampered body, unknown phone/account, and oversized request are rejected with no message mutation.
+## 11. Operations, reliability, and security
 
-### AC-WA-06 — Non-blocking ineligible order
+### AC-OPS-01 — Durable work
 
-Missing/invalid phone, missing consent under approved policy, unsupported locale, or missing/unapproved template causes `SKIPPED`/visible terminal failure while the Shopify order remains imported and operable.
+A domain change and outbox record commit atomically. Restarting API/worker or losing Redis does not lose committed work; PostgreSQL state supports safe republish/reconciliation.
 
-### AC-WA-07 — Provider failures
+### AC-OPS-02 — Failed jobs and events
 
-Rate-limit/transient failures retry with bounded backoff; provider validation/authentication failures stop and expose safe remediation. Manual retry requires permission and creates an audit record without creating a new logical message intent.
+Authorized users can inspect provider, event type, attempts, correlation ID, sanitized error, and retry/reconciliation state. Eligible retry actions are audited.
 
-### AC-WA-08 — Inbound scope boundary
+### AC-OPS-03 — Security baseline
 
-An inbound customer conversation event does not create an AI response, support inbox, or free-form outbound message. It follows the approved acknowledge/minimize/ignore behavior.
+Argon2id, secure HTTP-only cookies, server-side role enforcement, environment validation, no committed secrets, webhook verification, input validation, authentication rate limiting, masked logs, and critical-action audit records pass verification.
 
-## 10. Courier and shipment acceptance cases
+### AC-OPS-04 — Backup
 
-### AC-SHPmt-01 — Confirmation prerequisite
+The documented basic PostgreSQL backup procedure is executed and a restore/integrity check is recorded for the controlled test environment. Automation and stronger disaster-recovery targets are post-MVP.
 
-API and UI reject shipment creation for unconfirmed, cancelled, or invalid orders. No outbox/provider operation is emitted.
+## 12. MVP frontend matrix
 
-### AC-SHPmt-02 — Readiness validation
-
-Missing recipient/address/phone, empty shippable lines, invalid COD/currency policy, or unhealthy courier blocks readiness with actionable safe reasons.
-
-### AC-SHPmt-03 — Duplicate prevention
-
-Repeated button clicks, identical API requests, duplicate outbox delivery, worker retry, and concurrent workers result in one active primary shipment operation and one provider shipment for a provider with deterministic idempotency support.
-
-### AC-SHPmt-04 — Successful creation
-
-Successful response stores provider key, shipment ID, tracking number/URL, raw/normalized status, client reference, items, event, operation success, audit/system timeline, and Shopify fulfilment outbox.
-
-### AC-SHPmt-05 — Retryable and terminal failure
-
-Scripted retryable failure schedules bounded retry with attempts/next time visible. Terminal validation/auth failure stops and shows safe remediation. Neither creates a second logical shipment.
-
-### AC-SHPmt-06 — Ambiguous creation
-
-Simulate connection loss after provider acceptance:
-
-- when provider supports client-reference lookup/idempotency, reconciliation finds the existing shipment before resend;
-- when capability is absent/unknown, state becomes `RECONCILIATION_REQUIRED`, automatic create retries stop, and operator sees a clear warning.
-
-### AC-SHPmt-07 — Status progression
-
-Approved normalized events move shipment/order through shipped, out for delivery, and delivered as allowed. Raw and normalized statuses are both visible.
-
-### AC-SHPmt-08 — Failure/refusal/return
-
-Representative normalized delivery failed, refused, and returned events produce only approved CRM transitions and remain distinct. Required manual decision points are visible.
-
-### AC-SHPmt-09 — Unknown/regressive status
-
-Unknown or older/regressive event is appended, flagged, and does not silently regress a terminal/current state.
-
-### AC-SHPmt-10 — Fake provider labelling
-
-When fake provider is active, settings, shipment pages, tracking values, logs/evidence, and release banner identify “Simulated courier — not Ozone.” Fake controls are unavailable when production policy forbids them.
-
-## 11. Integration operations, jobs, and audit cases
-
-### AC-OPS-01 — Transactional outbox recovery
-
-Terminate the API immediately after committing a domain change/outbox event but before queue publish. After restart, publisher dispatches the event and one business effect results.
-
-### AC-OPS-02 — Redis loss/recovery
-
-Restart or clear the test Redis queue after intent is committed. PostgreSQL outbox/operation state enables safe republish/reconciliation; committed work does not disappear.
-
-### AC-OPS-03 — Worker lease recovery
-
-Terminate a worker after claiming work. After lease expiry/recovery, another worker completes or safely reconciles it without invalid duplicate effect.
-
-### AC-OPS-04 — Failed jobs screen
-
-Authorized user can filter retryable, terminal, and reconciliation-required operations, inspect safe error/attempt/correlation/provider request metadata, and perform only eligible permitted retries.
-
-### AC-OPS-05 — Integration events screen
-
-Authorized user can inspect provider, event type, received/source time, dedupe identity, processing state, attempts, and sanitized failure. Raw secrets/PII are absent or restricted/encrypted under the approved diagnostic policy.
-
-### AC-OPS-06 — Audit immutability
-
-No application API allows update/delete of audit records. Filters by actor/action/target/date work with bounded pagination.
-
-## 12. Screen acceptance matrix
-
-| Screen | Acceptance |
+| Screen | Required acceptance |
 |---|---|
-| Login | AC-AUTH-01 through AC-AUTH-04; keyboard accessible and generic errors |
-| Dashboard | Correct linked counts, organization time zone/range, freshness and failure indicators |
-| Orders list | AC-ORD-01 |
-| Order details/timeline | AC-ORD-02 through AC-ORD-06 and visible message/shipment operations |
-| Customers | AC-CUS-01 |
-| Products/variants | AC-CAT-01 |
-| Inventory by location | AC-INV-01 |
-| Shipments/tracking | AC-SHPmt-01 through AC-SHPmt-10 as applicable |
-| Shopify settings/health | AC-SHP-01, sync runs, webhook freshness, safe errors |
-| WhatsApp settings/status | AC-WA-01 through AC-WA-08 as applicable |
-| Ozone settings | Shows blocked readiness with missing official inputs, or passed live connection; never invented values |
-| Integration events | AC-OPS-05 |
-| Failed jobs | AC-OPS-04 |
-| Users/roles | Permission-gated create/update/disable/assignment with audit |
-| Audit logs | AC-AUTH-07 and AC-OPS-06 |
+| Login | AC-AUTH-01/02 |
+| Dashboard | Operational counts, synchronization freshness, failures |
+| Orders | AC-ORD-01 |
+| Order details and timeline | AC-E2E-01, AC-ORD-02/04, message/shipment state |
+| Catalog and inventory | AC-CAT-01 |
+| Integration configuration and health | Shopify/WhatsApp/Ozone or fake-provider safe state |
+| Integration events and failed jobs | AC-OPS-02 |
+| Basic user management | AC-AUTH-03/04 for `ADMIN`/`OPERATOR` |
 
-Each screen passes responsive small-laptop layout, keyboard navigation, visible focus, labelled controls, contrast, error association, loading, empty, stale, permission-denied, and recoverable-error checks.
+Every MVP screen has loading, empty, permission-denied, stale-data, validation, and recoverable-error states. It is keyboard usable with visible focus and readable status labels.
 
-## 13. Non-functional acceptance
+## 13. Ozone acceptance addendum
 
-### AC-NFR-01 — Performance
-
-At the reference dataset of 100,000 orders, 100,000 customers, 50,000 variants, and 1,000,000 events:
-
-- p95 ordinary API reads are below 500 ms;
-- p95 ordinary local mutations are below 1 second, excluding external completion;
-- list/timeline endpoints remain bounded and paginated;
-- critical SQL plans use intended indexes and show no unbounded N+1 queries.
-
-Test hardware and load profile are recorded.
-
-### AC-NFR-02 — Webhook response
-
-Valid webhook acceptance responds within 5 seconds after verification and durable inbox write under expected load. Slow domain/provider processing is deferred.
-
-### AC-NFR-03 — Process recovery
-
-Restart web, API, and worker independently. Readiness changes correctly, in-flight durable work recovers, and no committed order/outbox/inbox record is lost.
-
-### AC-NFR-04 — Backup and restore
-
-Restore encrypted backup to an isolated environment within the target 4-hour RTO. Data meets the 24-hour RPO, migrations/app start, integrity checks pass, and pending operations are reconciled before egress is enabled.
-
-### AC-NFR-05 — Security
-
-The release checklist in `SECURITY.md` passes, including Argon2id benchmark, session/CSRF, permission/isolation, webhook signatures, security headers, private data stores, non-root containers, scans, and log sentinel tests.
-
-### AC-NFR-06 — Secret/PII leakage
-
-Automated sentinel values placed in credentials and customer fields do not appear in:
-
-- browser JavaScript bundles or HTML;
-- ordinary API error bodies;
-- structured application logs;
-- audit metadata;
-- BullMQ job inspection available to normal operators.
-
-### AC-NFR-07 — Accessibility/browser
-
-Core golden path completes using keyboard alone with no serious automated accessibility violation and passes smoke tests on the agreed current/previous major browser versions.
-
-### AC-NFR-08 — Observability
-
-An operator can trace the golden-path order across request, webhook, integration event, outbox, queue operation, message, shipment, Shopify fulfilment, and audit records using correlation/entity IDs without inspecting credentials.
-
-### AC-NFR-09 — Time and money
-
-Stored instants are UTC and display correctly in organization time zone around a tested date boundary. All amounts round-trip as integer minor units with correct currency; no floating-point discrepancy appears.
-
-## 14. Live Ozone acceptance addendum
-
-These cases are blocked until official documentation and sandbox credentials are approved.
+These cases are blocked until official Ozone documentation and sandbox/test credentials are approved. Do not invent any endpoint, header, request/response field, webhook signature, or status.
 
 ### AC-OZONE-01 — Contract traceability
 
-Every implemented endpoint, header/auth mechanism, request field, response field, error, capability, and status mapping references the approved official documentation version. No fake fixture is used as evidence.
+Every implemented behavior references the approved official documentation version and an approved field/status mapping.
 
-### AC-OZONE-02 — Authentication and health
+### AC-OZONE-02 — Connection and authentication
 
-Sandbox authentication succeeds; invalid/expired credentials produce safe terminal configuration state. Credentials are server-only and redacted.
+The official sandbox connection succeeds with server-side credentials. Invalid/expired credentials produce a safe blocked/terminal state.
 
 ### AC-OZONE-03 — Shipment creation
 
-Representative valid order creates one sandbox shipment with correct approved address, parcel, COD, reference, and returned tracking fields.
+A representative confirmed order creates one official sandbox shipment with the approved request fields and stores the returned official shipment/tracking identifiers.
 
 ### AC-OZONE-04 — Duplicate and ambiguous-result safety
 
-Repeated clicks/jobs and simulated timeout follow Ozone's official idempotency/client-reference/lookup semantics and do not create an unintended second shipment. If the official API cannot guarantee reconciliation, documented manual control and business sign-off are required.
+Repeated clicks, retries, and simulated timeouts follow Ozone's documented idempotency, client-reference, or lookup semantics. If safe reconciliation is impossible, creation stops and requires an explicit operational decision.
 
-### AC-OZONE-05 — Validation/errors/rate limits
+### AC-OZONE-05 — Tracking and status synchronization
 
-Official invalid-address/field, authentication, throttling, transient, and unavailable cases map to correct retry/terminal behavior with safe visible errors.
+The official webhook or polling mechanism is verified. Duplicate/out-of-order events are safe, raw and normalized statuses are stored, and approved status mappings update CRM and Shopify without conflating status domains.
 
-### AC-OZONE-06 — Status acquisition
+Only after AC-OZONE-01 through AC-OZONE-05 pass may the release carry the **Client MVP — live Ozone** label.
 
-Official webhook signature/retry behavior or polling behavior is tested. Duplicate and out-of-order events remain idempotent.
+## 14. Rejection conditions
 
-### AC-OZONE-07 — Status mapping
+Reject the release if it has duplicate CRM orders, duplicate WhatsApp logical sends, duplicate courier shipments, CRM inventory deductions, unverified webhook mutations, leaked credentials/PII, missing durable failures, shipment creation before confirmation, conflated statuses, fake courier presented as Ozone, guessed Ozone behavior, or an API authorization bypass.
 
-Every official status maps through an approved table to raw, normalized, terminal/review flags, and permitted CRM transition. Failure, refusal, cancellation, and return distinctions are verified with sandbox fixtures or Ozone-approved evidence.
-
-### AC-OZONE-08 — Shopify update
-
-Tracking/status obtained from the real Ozone sandbox drives the approved Shopify fulfilment/tracking flow once without conflating courier and CRM states.
-
-### AC-OZONE-09 — Cutover labelling
-
-Ozone-connected shipments show provider `OZONE`; fake shipments remain `FAKE_COURIER`. Historical fake tracking is never presented as live Ozone tracking.
-
-Only after AC-OZONE-01 through AC-OZONE-09 pass may the release carry the **Core MVP — live Ozone** label.
-
-## 15. Explicit rejection conditions
-
-Release is rejected if any of the following occurs:
-
-- duplicate CRM order for one Shopify source order/connection;
-- duplicate courier shipment caused by an ordinary repeated click/job retry;
-- CRM inventory deduction in addition to Shopify's adjustment;
-- one status field conflates Shopify financial, Shopify fulfilment, CRM operational, or courier state;
-- shipment creation before employee confirmation;
-- unverified webhook mutates business data;
-- credential or sensitive customer data appears in frontend code/logs;
-- failed external operations disappear without durable visible state;
-- fake courier is represented as live Ozone;
-- live Ozone behavior is implemented/tested from guessed endpoints, fields, auth, or statuses;
-- role or organization scope can be bypassed through direct API access;
-- backup cannot be restored;
-- required privacy/retention policy remains unapproved for production handling.
-
-## 16. Traceability summary
-
-| Requirement area | Primary acceptance cases |
-|---|---|
-| Authentication/RBAC/organizations | AC-AUTH-01–07 |
-| Dashboard and operational UI | Screen matrix, AC-ORD-01, AC-NFR-08 |
-| Shopify import/webhooks/inventory | AC-SHP-01–08, AC-INV-01 |
-| Orders/customers/catalog | AC-ORD-01–06, AC-CUS-01, AC-CAT-01 |
-| WhatsApp templates/status | AC-WA-01–08 |
-| Shipment/courier | AC-SHPmt-01–10 |
-| Shopify fulfilment outbound | AC-SHP-09–10 |
-| Outbox/idempotency/jobs/audit | AC-OPS-01–06 |
-| Security/privacy/reliability | AC-NFR-02–09 |
-| Live Ozone | AC-OZONE-01–09 |
-
-## 17. Sign-off record
-
-Record the following in the release evidence:
+## 15. Sign-off record
 
 ```text
 Release label:
-Release version / image digests:
 Environment:
-Database migration version:
-Shopify shop and API version:
-WhatsApp test account/template:
+Database migration:
+Shopify shop / API version:
+WhatsApp account / template:
 Courier provider (FAKE_COURIER or OZONE):
-Acceptance run link/location:
+Acceptance evidence:
 Known accepted defects:
 Product owner:
 Operations representative:
