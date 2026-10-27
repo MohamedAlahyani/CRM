@@ -1,0 +1,39 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "How this CRM works today",
+    "locale": "en",
+    "output": ".archify/architecture-crm-overview-20261027-132747/crm-overview.html",
+    "quality_profile": "showcase",
+    "repository": {"url":"https://github.com/MohamedAlahyani/CRM.git","revision":"ca842ee4bc8397d454958cb9e53059eb6f7fecd4","link_mode":"local-only"}
+  },
+  "components": [
+    {"id":"rep","type":"external","label":"You","sublabel":"Browser","pos":[40,40],"size":[120,70],"sources":[{"path":"crm/apps/app/app/(app)/[slug]/contacts/page.tsx","line":24,"end_line":37}]},
+    {"id":"web","type":"frontend","label":"Web app","sublabel":"Next.js | apps/app","pos":[280,40],"size":[210,70],"sources":[{"path":"crm/apps/app/app/api/[...path]/route.ts","line":5,"end_line":41},{"path":"crm/apps/app/app/eve/v1/[...path]/route.ts","line":91,"end_line":121},{"path":"crm/apps/app/lib/session.ts","line":1,"end_line":26}]},
+    {"id":"api","type":"backend","label":"Business API","sublabel":"NestJS | apps/api","pos":[730,40],"size":[200,70],"sources":[{"path":"crm/apps/api/src/contacts/contacts.service.ts","line":289,"end_line":330},{"path":"crm/apps/api/src/agent/agent-trigger.service.ts","line":461,"end_line":507},{"path":"crm/apps/api/src/app.module.ts","line":41,"end_line":81}]},
+    {"id":"mail","type":"external","label":"Connected accounts","sublabel":"Google / Microsoft","pos":[1080,40],"size":[200,70],"sources":[{"path":"crm/apps/api/src/sync/mailbox-sync.service.ts","line":28,"end_line":66},{"path":"crm/apps/api/src/google/gmail.client.ts","line":43,"end_line":67},{"path":"crm/apps/api/src/microsoft/graph.client.ts","line":1,"end_line":25}]},
+    {"id":"database","type":"database","label":"PostgreSQL","sublabel":"Records + AgentTask queue","pos":[730,280],"size":[200,80],"sources":[{"path":"crm/packages/db/prisma/schema.prisma","line":1,"end_line":10},{"path":"crm/packages/db/prisma/schema.prisma","line":466,"end_line":497},{"path":"crm/packages/db/src/client.ts","line":101,"end_line":105}]},
+    {"id":"agent","type":"backend","label":"AI agent","sublabel":"eve | apps/agent","pos":[280,280],"size":[210,80],"sources":[{"path":"crm/apps/agent/agent/schedules/dispatch.ts","line":12,"end_line":49},{"path":"crm/apps/agent/agent/lib/tasks.ts","line":31,"end_line":70},{"path":"crm/apps/agent/agent/lib/facts.ts","line":149,"end_line":228}]},
+    {"id":"research","type":"external","label":"Research sources","sublabel":"Perplexity / Context.dev","pos":[280,490],"size":[210,70],"tag":"Keys required","sources":[{"path":"crm/apps/agent/agent/lib/perplexity.ts","line":21,"end_line":48},{"path":"crm/apps/agent/agent/lib/capabilities.ts","line":47,"end_line":68}]}
+  ],
+  "connections": [
+    {"id":"open","from":"rep","to":"web","label":"Open CRM","variant":"emphasis"},
+    {"id":"requests","from":"web","to":"api","label":"tRPC + session","variant":"emphasis"},
+    {"id":"persist","from":"api","to":"database","label":"Read / write + queue tasks","variant":"emphasis"},
+    {"id":"sync","from":"api","to":"mail","label":"Sync after consent"},
+    {"id":"chat","from":"web","to":"agent","label":"Chat: signed bridge token","variant":"security"},
+    {"id":"session-read","from":"web","to":"database","label":"Server session reads","fromSide":"right","toSide":"top"},
+    {"id":"background","from":"agent","to":"database","label":"Lease tasks / save results","variant":"dashed"},
+    {"id":"sources","from":"agent","to":"research","label":"Research with configured keys"}
+  ],
+  "cards": [
+    {"dot":"cyan","title":"1. The three running applications","items":["crm/apps/app shows contacts, companies, deals, dashboards and settings.","crm/apps/api checks access, runs business rules and saves CRM changes.","crm/apps/agent runs research, chat and custom agent jobs independently."]},
+    {"dot":"emerald","title":"2. Example: you add a contact","items":["The form calls /api/trpc through the Next.js proxy.","The API saves the contact and queues identification work in AgentTask.","The agent leases due work, gathers evidence and saves results.","The app reads the saved record and displays the updated information."]},
+    {"dot":"violet","title":"3. Background work survives the browser","items":["PostgreSQL holds both business records and the durable task queue.","The dispatch schedule runs each minute; an optional API signal also wakes dispatch.","Leases and SKIP LOCKED prevent dispatchers from claiming the same task together.","Logos and portraits use a direct lane. Research uses agent sessions."]},
+    {"dot":"amber","title":"4. Identity and evidence rules","items":["Better Auth runs in the API. Next.js also reads sessions from the shared database.","This is one shared workspace. Its URL slug does not select a separate tenant.","Chat checks sign-in and conversation ownership before it forwards a signed token.","Contact facts use evidence rules. Human-entered values take priority; conflicts become proposals."]},
+    {"dot":"slate","title":"5. Shared building blocks","items":["crm/packages/db: Prisma client, database schema and migrations.","crm/packages/auth: Better Auth, sign-in and workspace permissions.","crm/packages/validation: shared Zod schemas. packages/ui: shared UI components.","packages/env and packages/telemetry support configuration and event reporting.","Bun workspaces and Turborepo coordinate the applications and packages."]},
+    {"dot":"orange","title":"6. Connections and supporting features","items":["Connected Google and Microsoft accounts supply email and calendar data through the API.","Slack, website tracking, intake, archive and custom fields are supporting API modules.","Redis is an optional API cache. Without REDIS_URL, the API uses process memory.","Research providers require configured keys. Optional Blob storage holds copied images."]},
+    {"dot":"rose","title":"Read this as the implemented architecture","items":["The root README and docs/ARCHITECTURE.md describe the planned commerce system.","Shopify order ingestion, WhatsApp confirmation and Ozone shipping remain planned or blocked.","The current code uses apps/app, apps/api and apps/agent under crm/.","This overview groups internal modules. It describes code at the pinned revision, not a live deployment check."]}
+  ]
+}

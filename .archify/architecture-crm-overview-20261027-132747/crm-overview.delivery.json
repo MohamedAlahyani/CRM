@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "2cc7c9e0-19c5-4dbe-957f-d03716db135b",
+  "status": "current",
+  "command": "deliver",
+  "type": "architecture",
+  "input": "C:\\Users\\malah\\OneDrive\\Bureau\\Freelance_Projects\\CRM\\.archify\\architecture-crm-overview-20261027-132747\\candidate.json",
+  "output": "C:\\Users\\malah\\OneDrive\\Bureau\\Freelance_Projects\\CRM\\.archify\\architecture-crm-overview-20261027-132747\\crm-overview.html",
+  "specification": {
+    "sha256": "75326cafc6ac286737b8c3696c0bc1a33b0031ed8f1f778ace3eee33b4ebc06f",
+    "bytes": 6318
+  },
+  "artifact": {
+    "sha256": "229410df0f22f82d5270a441abe777a038c017c72a7397c544b12b0dc614a158",
+    "bytes": 846509
+  }
+}
